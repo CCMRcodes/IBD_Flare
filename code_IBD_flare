@@ -1,0 +1,94 @@
+# This R file fits the random forest model, computes accuracy, and makes relevant plots for IBD flare.
+
+library('pROC')
+library('randomForest')
+
+# First read in data in a data.frame named lgt_data3, which includes the outcome and all predictors.
+
+# Make the outcome flare_type as fator
+lgt_data3$flare_type = factor(lgt_data3$flare_type)
+levels(lgt_data3$flare_type) = c(0,1)
+
+# Split the data into training and testing by time: 70% into training, the rest 30% into test data
+# Get ids of patients
+uniq_id3 = unique(lgt_data3$id)
+leng_id3 = length(uniq_id3)
+testid3 = uniq_id3
+testidnum3 = NULL
+for(i in testid3){
+  # Obtain visits for a given patient
+  each = which(lgt_data3$id==i)
+  # Assign the later 30% visits of the patient for testing
+  testidnum3 = cbind(testidnum3,t(tail(each,round(length(each)*0.3))))
+}
+
+# Form training and test data
+traindata3 = lgt_data3[-testidnum3,]
+testdata3 = lgt_data3[testidnum3,]
+
+#### Longitudinal random forest model without previous flares ####
+# Train model
+rf_lgt3 = randomForest(flare_type~.,data = traindata3[,names(traindata3)!='preflare'],nTrees=500)
+# Make prediction on test data
+pd_rf_lgt3 = predict(rf_lgt3,newdata = testdata3[,names(testdata3)!='preflare'],"prob")[,2]
+# Get ROC
+rf_lgt_roc3 = roc(testdata3$flare_type,pd_rf_lgt3,ci=T)
+rf_lgt_roc3
+# Obtain variable importance scores
+rf_lgt_imp3 = importance(rf_lgt3,type=2) 
+
+# Make ROC plot for model without previous flares
+plot(rf_lgt_roc3)
+
+# Find the best cutoff
+corf_lgt = coords(rf_lgt_roc3,'b',best.method = 'closest.topleft')
+corf_lgt
+
+# Get the misclassification table for model without previous flares
+misclass_rf_lgt = table(testdata3$flare_type,pd_rf_lgt3>corf_lgt[1])
+misclass_rf_lgt
+
+# Compute the Brier score
+BS_rf_lgt = mean((as.numeric(testdata3$flare_type)-1 - (pd_rf_lgt3>corf_lgt[1]))^2)
+BS_rf_lgt
+
+# Make variable importance plot for the first 50 important variables
+trf_lgt_imp3 = t(rf_lgt_imp3)
+rf_lgt_imp3_scaled = trf_lgt_imp3/sum(trf_lgt_imp3)
+names(rf_lgt_imp3_scaled) = colnames(trf_lgt_imp3)
+srf_lgt_imp3 = tail(sort(rf_lgt_imp3_scaled),50)
+barplot(srf_lgt_imp3,horiz = T,names.arg = names(srf_lgt_imp3),space = 0.5,axis.lty = 0.5,las=1,cex.names = 0.5)
+
+
+#### Longitudinal random forest model with previous flares ####
+# Train model
+rf_lgt3_full = randomForest(flare_type~.,data = traindata3,nTrees=500)
+# Make prediction on test data
+pd_rf_lgt3_full = predict(rf_lgt3_full,newdata = testdata3,"prob")[,2]
+# Get ROC
+rf_lgt_roc3_full = roc(testdata3$flare_type,pd_rf_lgt3_full,ci=T)
+rf_lgt_roc3_full
+# Obtain variable importance scores
+rf_lgt_imp3_full = importance(rf_lgt3_full,type=2)
+
+# Make ROC plot for model with previous flares
+plot(rf_lgt_roc3_full)
+
+# Find the best cutoff
+corf_lgt_full = coords(rf_lgt_roc3_full,'b',best.method = 'closest.topleft')
+corf_lgt_full
+
+# Get the misclassification table for model with previous flares
+misclass_rf_lgt_full = table(testdata3$flare_type,pd_rf_lgt3_full>corf_lgt_full[1])
+misclass_rf_lgt_full
+
+# Compute the Brier score
+BS_rf_lgt_full = mean((as.numeric(testdata3$flare_type)-1 - (pd_rf_lgt3_full>corf_lgt_full[1]))^2)
+BS_rf_lgt_full
+
+# Make variable importance plot for the first 50 important variables
+trf_lgt_imp3_full = t(rf_lgt_imp3_full)
+rf_lgt_imp3_full_scaled = trf_lgt_imp3_full/sum(trf_lgt_imp3_full)
+names(rf_lgt_imp3_full_scaled) = colnames(trf_lgt_imp3_full)
+srf_lgt_imp3_full = tail(sort(rf_lgt_imp3_full_scaled),50)
+barplot(srf_lgt_imp3_full,horiz = T,names.arg = names(srf_lgt_imp3_full),space = 0.5,axis.lty = 0.5,las=1,cex.names = 0.5)
